@@ -1,0 +1,101 @@
+# Plug Websocket Sample
+
+```elixir
+Mix.install([
+  {:gun, "~> 2.1"},
+  {:plug, "~> 1.16"},
+  {:plug_cowboy, "~> 2.7"},
+  {:plug_socket, "~> 0.1"}
+])
+```
+
+## Setting up the Demo resources
+
+This Livebook demonstrates how to use `:gun` in Elixir as a Websocket client. To do so, we're going to start a Websocket server that is only used for demonstration purposes. These resources will be namespaced with `Demo`.
+
+First, we create the HTTP server's `Router` which defines all the URL paths and the modules that handle them.
+
+```elixir
+defmodule Demo.Router do
+  use Plug.Router
+  use PlugSocket
+
+  plug(:match)
+  plug(:dispatch)
+
+  socket("/ws", Demo.MySocket)
+
+  get "/" do
+    send_resp(conn, 200, "hello world")
+  end
+end
+```
+
+Next, we create a helper module that will start and stop the HTTP server.
+
+```elixir
+defmodule Demo.Setup do
+  def start() do
+    Plug.Cowboy.http(Demo.Router, [],
+      port: 9000,
+      dispatch: PlugSocket.plug_cowboy_dispatch(Demo.Router)
+    )
+  end
+
+  def restart() do
+    Plug.Cowboy.shutdown(Demo.Router.HTTP)
+    start()
+  end
+end
+```
+
+Our last module is the one that will handle the Websocket connection on the server side. It simply echoes back the `:binary` frame that it receives.
+
+```elixir
+defmodule Demo.MySocket do
+  @behaviour :cowboy_websocket
+
+  @impl true
+  def init(req, state) do
+    {:cowboy_websocket, req, state}
+  end
+
+  @impl true
+  def websocket_init(state) do
+    {:ok, state}
+  end
+
+  @impl true
+  def websocket_handle(_frame = {:binary, content}, state) do
+    {[{:binary, "The server received your '#{content}'"}], state}
+  end
+
+  @impl true
+  def websocket_info(info, state) do
+    IO.inspect(info, label: "websocket_info")
+    {:ok, state}
+  end
+end
+```
+
+Finally, we're ready to start our Demo HTTP server.
+
+```elixir
+Demo.Setup.restart()
+```
+
+## Using :gun on the client side
+
+Finally, we're ready to use `:gun` on the client side to create the Websocket connection and send a message.
+
+```elixir
+{:ok, conn} = :gun.open(~c"localhost", 9000, %{protocols: [:http]})
+{:ok, :http} = :gun.await_up(conn)
+http_headers = [{"authorization", "Bearer example"}, {"user-agent", "demo"}]
+# see :gun.ws_opts()
+ws_opts = %{}
+stream_ref = :gun.ws_upgrade(conn, ~c"/ws", http_headers, ws_opts)
+{:upgrade, ["websocket"], _headers} = :gun.await(conn, stream_ref)
+:ok = :gun.ws_send(conn, stream_ref, {:binary, "test"})
+:gun.await(conn, stream_ref, 100)
+```
