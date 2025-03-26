@@ -13,6 +13,8 @@ Mix.install([
 
 This Livebook demonstrates how to use `:gun` in Elixir as a Websocket client. To do so, we're going to start a Websocket server that is only used for demonstration purposes. These resources will be namespaced with `Demo`.
 
+The `:gun` calls are at the bottom, if you want to jump straight to it.
+
 First, we create the HTTP server's `Router` which defines all the URL paths and the modules that handle them.
 
 ```elixir
